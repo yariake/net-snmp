@@ -1,0 +1,23 @@
+#!/bin/bash
+
+MASTERREPO=git://git.code.sf.net/p/net-snmp/code
+UPSTREAM=upstream
+
+echo "------------------------------";
+git remote -v | grep ${UPSTREAM} > /dev/null 2>&1;
+if [[ 0 != $? ]]; then
+    echo " Not exist ${UPSTREAM}";
+    git remote add ${UPSTREAM} ${MASTERREPO};
+    git remote -v;
+else
+    echo " Already exists ${UPSTREAM}";
+fi
+echo "------------------------------";
+
+sleep 2
+
+git fetch ${UPSTREAM}
+git branch -va
+git checkout master
+git merge ${UPSTREAM}/master
+
