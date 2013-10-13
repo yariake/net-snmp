@@ -1,0 +1,136 @@
+#!/bin/bash
+
+PREFIX="$(pwd)/Build";
+MAKE_LOGS="${PREFIX}/log";
+NETSNMPDIR="${PREFIX}/tmp";
+OPENSSLDIR="$(pwd)/openssl-for-iphone";
+CROSS_DEVELOPER="$(xcode-select -print-path)";
+ARCHS="armv7 arm64 i386 armv7s"
+
+PS3="please select iOS version > "
+select item in $(xcodebuild -showsdks | grep iphoneos | awk '{print $NF}' | sed -e "s@iphoneos@@g")
+do
+    if [ "${REPLY}" = "q" ]; then
+        echo "Exit from system."
+        exit 
+    fi
+    if [ -z "$item" ] ; then
+        continue
+    fi
+    case "$item" in
+        quit ) echo "Exit from system."
+           break ;;
+        * ) echo "you select $item ($REPLY)"
+           break ;;
+    esac
+done
+
+SDKVER=${item};
+
+for arch in ${ARCHS}; do
+    if [[ "${arch}" == "i386" ]]; then
+        export CROSS_TYPE=Simulator
+    else
+        export CROSS_TYPE=OS
+    fi
+
+    CROSS_TOP="${CROSS_DEVELOPER}/Platforms/iPhone${CROSS_TYPE}.platform/Developer";
+    CROSS_CHAIN="${CROSS_TOP}/usr/bin";
+    CROSS_SDK="iPhone${CROSS_TYPE}${SDKVER}.sdk";
+    SDK_DIR="${CROSS_TOP}/SDKs/${CROSS_SDK}";
+    TOOL_DIR="${CROSS_DEVELOPER}/Toolchains/XcodeDefault.xctoolchain";
+
+    export PATH="${TOOL_DIR}/usr/bin:${PATH}";
+
+    cc=${CROSS_DEVELOPER}/usr/bin/gcc;
+    ld=${CROSS_DEVELOPER}/usr/bin/ld;
+    ar=${TOOL_DIR}/usr/bin/ar;
+    build=$(${cc} -v 2>&1 | grep "Target" | awk '{print $2}');
+    host=$(${cc} -arch ${arch} -v 2>&1 | grep "Target" | awk '{print $2}');
+    target=${host};
+
+    CFLAGS="-with-cflags=\"";
+    CFLAGS="-arch ${arch} ";
+#    CFLAGS="${CFLAGS} --build=${build}";
+#    CFLAGS="${CFLAGS} --host=${host}";
+#    CFLAGS="${CFLAGS} --target=${target}";
+    CFLAGS="${CFLAGS} -pipe";
+    CFLAGS="${CFLAGS} -no-cpp-precomp";
+    CFLAGS="${CFLAGS} -I${SDK_DIR}/usr/include/ ";
+#    CFLAGS="${CFLAGS}-isysroot ${SDK_DIR} ";
+#    CFLAGS="${CFLAGS}\"";
+
+    LDFLAGS="-L${SDK_DIR}/usr/lib";
+    LDFLAGS="${LDFLAGS} -L${SDK_DIR}/usr/lib/system";
+    DYLD_LIBRARY_PATH="${SDK_DIR}/usr/lib";
+
+    LD_LIBRARY_PATH="${SDK_DIR}/usr/lib";
+
+    export CFLAGS="${CFLAGS}";
+    export LDFLAGS="${LDFLAGS}";
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}";
+    export DYLD_LIBRARY_PATH="${DYLD_LIBRARY_PATH}";
+
+    CONFIGOPTIONS="";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --prefix=${PREFIX}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --exec-prefix=${SDK_DIR}/usr";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-sysroot=${SDK_DIR}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --build=${build}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --host=${host}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --target=${target}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-defaults";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-cc=${cc}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-linkcc=${cc}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-ar=${ar}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-gnu-ld";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-openssl=${OPENSSLDIR}";
+#    CONFIGOPTIONS="${CONFIGOPTIONS} --with-cflags=${SDK_DIR}/usr/include";
+#    CONFIGOPTIONS="${CONFIGOPTIONS} --with-ldflags=${SDK_DIR}/usr/lib";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --enable-reentrant";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-embedded-perl";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-perl-cc-checks";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-shared";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-agent";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-applications";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-manuals";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-scripts";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-mibs";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --disable-snmptrapd-subagent";
+
+    #export LIBTOOL="${CROSS_DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool";
+
+    #host="x86_64-apple-darwin12.5.0"
+    #CONFIG_OPTIONS="--prefix=${PREFIX} --host=${host} --enable-reentrant --disable-shared --with-random=/dev/urandom --disable-agent --disable-applications --disable-manuals --disable-scripts --disable-mibs"
+
+    echo "./configure ${CONFIGOPTIONS}"
+    ./configure ${CONFIGOPTIONS}
+
+    exit 0;
+done
+
+mkdir -p ${MAKE_LOGS} ${NETSNMPDIR};
+
+CONFIG_OPTIONS="--prefix=${PREFIX} --host=arm-apple-darwin10 --disable-shared --with-random=/dev/urandom --disable-agent --disable-applications --disable-manuals --disable-scripts --disable-mibs"
+CROSS_TYPES="OS Simulator ";
+for type in ${CROSS_TYPES}; do
+    if [[ "Simulator" == ${type} ]]; then
+        ARCH_OPTIONS="-arch i386";
+    else
+        ARCH_OPTIONS="-arch arm64 -arch armv7 -arch armv7s";
+    fi
+    CROSS_TYPE=${type};
+
+    CROSS_TOP="${CROSS_DEVELOPER}/Platforms/iPhone${CROSS_TYPE}.platform/Developer";
+    CROSS_CHAIN="${CROSS_TOP}/usr/bin";
+    CROSS_SDK="iPhone${CROSS_TYPE}${SDKVER}.sdk";
+    SDK_DIR="${CROSS_TOP}/SDKs/${CROSS_SDK}";
+
+    export CC="${CROSS_DEVELOPER}/usr/bin/gcc"
+    export AR="${CROSS_DEVELOPER}/usr/bin/ar"
+    export CFLAGS="${ARCH_OPTIONS} -pipe -no-cpp-precomp -isysroot ${SDK_DIR} -I${SDK_DIR}/usr/include/ -I${OPENSSLDIR}/include/ -L${OPENSSLDIR}/lib/"
+
+    ./configure ${CONFIG_OPTIONS};
+
+    exit 0;
+done
+
