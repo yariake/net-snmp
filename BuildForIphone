@@ -25,6 +25,7 @@ do
 done
 
 SDKVER=${item};
+NETSNMPLIBS="";
 
 for arch in ${ARCHS}; do
     if [[ "${arch}" == "i386" ]] || [[ "${arch}" == "x86_64" ]]; then
@@ -116,5 +117,23 @@ for arch in ${ARCHS}; do
         echo "clean error ${CROSS_ARCH}";
         exit 1;
     fi
+
+    NETSNMPLIB="${PREFIX}/${CROSS_ARCH}/lib/libnetsnmp.a";
+
+    if [[ "" == ${NETSNMPLIBS} ]]; then
+        DELEGATE_ARCHDIR="${PREFIX}/${CROSS_ARCH}";
+        NETSNMPLIBS="${NETSNMPLIB}";
+    else
+        NETSNMPLIBS="${NETSNMPLIBS} ${NETSNMPLIB}";
+    fi
 done
+
+INSTALLDIR="${PREFIX}/net-snmp-for-iphone";
+mkdir -p "${INSTALLDIR}/lib";
+lipo -create ${NETSNMPLIBS} -output "${INSTALLDIR}/lib/libnetsnmp.a";
+
+mkdir -p "${INSTALLDIR}/include";
+cp -R ${DELEGATE_ARCHDIR}/include/net-snmp ${INSTALLDIR}/include/;
+
+echo; echo "Done."; echo;
 
