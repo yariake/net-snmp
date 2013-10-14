@@ -2,11 +2,9 @@
 
 PREFIX="$(pwd)/Build";
 MAKE_LOGS="${PREFIX}/log";
-NETSNMPDIR="${PREFIX}/tmp";
 OPENSSLDIR="$(pwd)/openssl-for-iphone";
 CROSS_DEVELOPER="$(xcode-select -print-path)";
-#ARCHS="x86_64 i386 armv7 armv7s arm64"
-ARCHS="arm64"
+ARCHS="x86_64 i386 armv7 armv7s arm64"
 
 PS3="please select iOS version > "
 select item in $(xcodebuild -showsdks | grep iphoneos | awk '{print $NF}' | sed -e "s@iphoneos@@g")
@@ -38,6 +36,7 @@ for arch in ${ARCHS}; do
     CROSS_TOP="${CROSS_DEVELOPER}/Platforms/iPhone${CROSS_TYPE}.platform/Developer";
     CROSS_CHAIN="${CROSS_TOP}/usr/bin";
     CROSS_SDK="iPhone${CROSS_TYPE}${SDKVER}.sdk";
+    CROSS_ARCH="${CROSS_SDK}-${arch}";
     SDK_DIR="${CROSS_TOP}/SDKs/${CROSS_SDK}";
     TOOL_DIR="${CROSS_DEVELOPER}/Toolchains/XcodeDefault.xctoolchain";
 
@@ -64,12 +63,14 @@ for arch in ${ARCHS}; do
     export LDFLAGS="${LDFLAGS}";
 
     CONFIGOPTIONS="";
-    CONFIGOPTIONS="${CONFIGOPTIONS} --prefix=${PREFIX}";
-    CONFIGOPTIONS="${CONFIGOPTIONS} --exec-prefix=${SDK_DIR}/usr";
-    CONFIGOPTIONS="${CONFIGOPTIONS} --with-sysroot=${SDK_DIR}";
+    CONFIGOPTIONS="${CONFIGOPTIONS} --prefix=${PREFIX}/${CROSS_ARCH}";
+#    CONFIGOPTIONS="${CONFIGOPTIONS} --exec-prefix=${PREFIX}/${CROSS_ARCH}";
+#    CONFIGOPTIONS="${CONFIGOPTIONS} --includedir=${PREFIX}/${CROSS_ARCH}/include";
     CONFIGOPTIONS="${CONFIGOPTIONS} --build=${build}";
     CONFIGOPTIONS="${CONFIGOPTIONS} --host=${host}";
     CONFIGOPTIONS="${CONFIGOPTIONS} --target=${target}";
+#    CONFIGOPTIONS="${CONFIGOPTIONS} --with-install-prefix=/tmp/
+    CONFIGOPTIONS="${CONFIGOPTIONS} --with-sysroot=${SDK_DIR}";
     CONFIGOPTIONS="${CONFIGOPTIONS} --with-defaults";
     CONFIGOPTIONS="${CONFIGOPTIONS} --with-cc=${cc}";
     CONFIGOPTIONS="${CONFIGOPTIONS} --with-linkcc=${cc}";
@@ -89,40 +90,31 @@ for arch in ${ARCHS}; do
     CONFIGOPTIONS="${CONFIGOPTIONS} --disable-mibs";
     CONFIGOPTIONS="${CONFIGOPTIONS} --disable-snmptrapd-subagent";
 
-    echo "./configure ${CONFIGOPTIONS}"
-    ./configure ${CONFIGOPTIONS}
+    MAKE_LOGS="${PREFIX}/${CROSS_ARCH}/log";
+    mkdir -p ${MAKE_LOGS};
 
-    if [[ 0 != $? ]]; then
-        echo "failed arch:${arch}.";
+    ./configure ${CONFIGOPTIONS} 2>&1 | tee ${MAKE_LOGS}/configure.log
+    if [[ 0 != ${PIPESTATUS[0]} ]]; then
+        echo "configure error ${CROSS_ARCH}";
         exit 1;
     fi
-done
 
-exit 0;
-
-mkdir -p ${MAKE_LOGS} ${NETSNMPDIR};
-
-CONFIG_OPTIONS="--prefix=${PREFIX} --host=arm-apple-darwin10 --disable-shared --with-random=/dev/urandom --disable-agent --disable-applications --disable-manuals --disable-scripts --disable-mibs"
-CROSS_TYPES="OS Simulator ";
-for type in ${CROSS_TYPES}; do
-    if [[ "Simulator" == ${type} ]]; then
-        ARCH_OPTIONS="-arch i386";
-    else
-        ARCH_OPTIONS="-arch arm64 -arch armv7 -arch armv7s";
+    make 2>&1 | tee ${MAKE_LOGS}/build.log
+    if [[ 0 != ${PIPESTATUS[0]} ]]; then
+        echo "make error ${CROSS_ARCH}";
+        exit 1;
     fi
-    CROSS_TYPE=${type};
 
-    CROSS_TOP="${CROSS_DEVELOPER}/Platforms/iPhone${CROSS_TYPE}.platform/Developer";
-    CROSS_CHAIN="${CROSS_TOP}/usr/bin";
-    CROSS_SDK="iPhone${CROSS_TYPE}${SDKVER}.sdk";
-    SDK_DIR="${CROSS_TOP}/SDKs/${CROSS_SDK}";
+    make install 2>&1 | tee ${MAKE_LOGS}/install.log
+    if [[ 0 != ${PIPESTATUS[0]} ]]; then
+        echo "install error ${CROSS_ARCH}";
+        exit 1;
+    fi
 
-    export CC="${CROSS_DEVELOPER}/usr/bin/gcc"
-    export AR="${CROSS_DEVELOPER}/usr/bin/ar"
-    export CFLAGS="${ARCH_OPTIONS} -pipe -no-cpp-precomp -isysroot ${SDK_DIR} -I${SDK_DIR}/usr/include/ -I${OPENSSLDIR}/include/ -L${OPENSSLDIR}/lib/"
-
-    ./configure ${CONFIG_OPTIONS};
-
-    exit 0;
+    make clean 2>&1 | tee ${MAKE_LOGS}/clean.log
+    if [[ 0 != ${PIPESTATUS[0]} ]]; then
+        echo "clean error ${CROSS_ARCH}";
+        exit 1;
+    fi
 done
 
