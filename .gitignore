@@ -116,3 +116,5 @@ win32/*/release
 win32/bin
 win32/lib
 Build/
+openssl-for-iphone/include
+openssl-for-iphone/lib
